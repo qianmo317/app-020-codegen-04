@@ -2,7 +2,10 @@ import { FACILITY_CODES, type Facility, type FacilityKind, type Floor } from '..
 
 let seq = 0;
 export function uid(): string {
-  return `id_${Date.now().toString(36)}_${(seq++).toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  // 时间戳（毫秒→36 进制）+ 进程内单调序号 + 10 位随机：
+  // 同毫秒连续调用（画房间后立刻放设施）也不会撞 id——曾因随机段仅 5 位
+  // 出现两个设施同 id 导致版本对照误判「出口被删」。
+  return `id_${Date.now().toString(36)}_${(seq++).toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
 }
 
 export function floorLabel(level: number): string {

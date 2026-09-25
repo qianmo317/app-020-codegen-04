@@ -101,7 +101,8 @@ export function ValidationPanel({ floorId, result, busy, rules, onLocate }: Prop
       )}
       {floor && (
         <p className="hint">
-          楼层版本 v{floor.version} · 校验按「{rules.buildingKind}」规则 v{rules.version} 执行
+          楼层版本 v{floor.version} · 当前为历史 v{floor.revisions?.length ? floor.revisions[floor.revisions.length - 1].seq : 0}
+          {' '}· 校验按「{rules.buildingKind}」规则 v{rules.version} 执行
         </p>
       )}
     </section>

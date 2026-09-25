@@ -26,16 +26,19 @@ const RoomShape = memo(function RoomShape({
   room,
   selected,
   delta,
+  diffMark,
   onPointerDown,
 }: {
   room: Room;
   selected: boolean;
   delta: Pt;
+  diffMark?: DiffMark;
   onPointerDown: (e: RPointerEvent<SVGGElement>, room: Room) => void;
 }) {
   const pts = room.polygon.map((p) => `${p.x + delta.x},${p.y + delta.y}`).join(' ');
   const cx = room.polygon.reduce((s, p) => s + p.x, 0) / room.polygon.length + delta.x;
   const cy = room.polygon.reduce((s, p) => s + p.y, 0) / room.polygon.length + delta.y;
+  const stroke = diffMark ? DIFF_STROKE[diffMark] : selected ? '#1976d2' : '#333333';
   return (
     <g
       onPointerDown={(e) => {
@@ -47,8 +50,10 @@ const RoomShape = memo(function RoomShape({
       <polygon
         points={pts}
         fill={USAGE_FILLS[room.usage]}
-        stroke={selected ? '#1976d2' : '#333333'}
-        strokeWidth={room.usage === 'corridor' ? 3 : 2.5}
+        fillOpacity={diffMark === 'removed' ? 0.25 : 1}
+        stroke={stroke}
+        strokeWidth={diffMark ? 4 : room.usage === 'corridor' ? 3 : 2.5}
+        strokeDasharray={diffMark === 'changed' ? '14 8' : undefined}
         vectorEffect="non-scaling-stroke"
       />
       <text
@@ -64,6 +69,22 @@ const RoomShape = memo(function RoomShape({
           {room.areaM2.toFixed(1)}㎡
         </tspan>
       </text>
+      {diffMark && (
+        <g style={{ pointerEvents: 'none' }}>
+          <circle cx={room.polygon[0].x + delta.x} cy={room.polygon[0].y + delta.y} r={650} fill={DIFF_STROKE[diffMark]} opacity={0.9} />
+          <text
+            x={room.polygon[0].x + delta.x}
+            y={room.polygon[0].y + delta.y + 220}
+            textAnchor="middle"
+            fontSize={560}
+            fill="#fff"
+            fontWeight="bold"
+            style={{ userSelect: 'none', pointerEvents: 'none' }}
+          >
+            {diffMark === 'added' ? '+' : diffMark === 'removed' ? '−' : '改'}
+          </text>
+        </g>
+      )}
     </g>
   );
 });
@@ -72,11 +93,13 @@ const FacilityShape = memo(function FacilityShape({
   fac,
   selected,
   delta,
+  diffMark,
   onPointerDown,
 }: {
   fac: Facility;
   selected: boolean;
   delta: Pt;
+  diffMark?: DiffMark;
   onPointerDown: (e: RPointerEvent<SVGGElement>, fac: Facility) => void;
 }) {
   const x = fac.x + delta.x;
@@ -89,15 +112,62 @@ const FacilityShape = memo(function FacilityShape({
         onPointerDown(e, fac);
       }}
       style={{ cursor: 'pointer' }}
+      opacity={diffMark === 'removed' ? 0.45 : 1}
     >
       {selected && <circle r={900} fill="none" stroke="#1976d2" strokeWidth={2} vectorEffect="non-scaling-stroke" />}
+      {diffMark && (
+        <circle
+          r={fac.kind === 'exit' ? 1100 : 900}
+          fill="none"
+          stroke={DIFF_STROKE[diffMark]}
+          strokeWidth={4}
+          strokeDasharray={diffMark === 'changed' ? '10 7' : undefined}
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
       <FacilityGlyph kind={fac.kind} s={fac.kind === 'exit' ? 700 : 550} />
       <text y={1150} textAnchor="middle" fontSize={330} fill="#555" style={{ userSelect: 'none', pointerEvents: 'none' }}>
         {fac.code}
       </text>
+      {diffMark && (
+        <text
+          y={fac.kind === 'exit' ? -1050 : -850}
+          textAnchor="middle"
+          fontSize={620}
+          fontWeight="bold"
+          fill={DIFF_STROKE[diffMark]}
+          style={{ userSelect: 'none', pointerEvents: 'none' }}
+        >
+          {diffMark === 'added' ? '新增' : diffMark === 'removed' ? '删除' : '移动'}
+        </text>
+      )}
     </g>
   );
 });
+
+/** 版本对照高亮：added 绿 / removed 红 / changed 橙（蓝留给编辑器选中态） */
+export type DiffMark = 'added' | 'removed' | 'changed';
+export const DIFF_STROKE: Record<DiffMark, string> = {
+  added: '#2e7d32',
+  removed: '#d32f2f',
+  changed: '#ef6c00',
+};
+
+export type PlanDiffMarks = {
+  addedRoomIds?: Set<string>;
+  removedRoomIds?: Set<string>;
+  changedRoomIds?: Set<string>;
+  addedFacilityIds?: Set<string>;
+  removedFacilityIds?: Set<string>;
+  changedFacilityIds?: Set<string>;
+};
+
+function markOf(id: string, added?: Set<string>, removed?: Set<string>, changed?: Set<string>): DiffMark | undefined {
+  if (added?.has(id)) return 'added';
+  if (removed?.has(id)) return 'removed';
+  if (changed?.has(id)) return 'changed';
+  return undefined;
+}
 
 export type FloorPlanProps = {
   floor: Floor;
@@ -113,17 +183,19 @@ export type FloorPlanProps = {
   coverageCells: Pt[] | null;
   highlight: Pt | null;
   markPt: Pt | null;
+  /** 版本对照高亮（对照页使用；编辑器不传即无高亮、可交互不变） */
+  diffMarks?: PlanDiffMarks;
   onRoomPointerDown?: (e: RPointerEvent<SVGGElement>, room: Room) => void;
   onFacilityPointerDown?: (e: RPointerEvent<SVGGElement>, fac: Facility) => void;
   onMarkPointerDown?: (e: RPointerEvent<SVGGElement>) => void;
 };
 
-/** 图纸渲染（编辑器 / 打印共用）：毫米坐标，1 单位 = 1mm */
+/** 图纸渲染（编辑器 / 打印 / 版本对照共用）：毫米坐标，1 单位 = 1mm */
 export function FloorPlan(props: FloorPlanProps) {
   const {
     floor, view, svgRef, underlayUrl, showGrid = true,
     selected, drag, dragDelta, draftPoints, draftCursor,
-    coverageCells, highlight, markPt,
+    coverageCells, highlight, markPt, diffMarks,
     onRoomPointerDown, onFacilityPointerDown, onMarkPointerDown,
   } = props;
   void svgRef;
@@ -161,6 +233,7 @@ export function FloorPlan(props: FloorPlanProps) {
           room={r}
           selected={selected?.type === 'room' && selected.id === r.id}
           delta={drag?.kind === 'room' && drag.id === r.id ? dragDelta : { x: 0, y: 0 }}
+          diffMark={diffMarks ? markOf(r.id, diffMarks.addedRoomIds, diffMarks.removedRoomIds, diffMarks.changedRoomIds) : undefined}
           onPointerDown={onRoomPointerDown ?? (() => {})}
         />
       ))}
@@ -177,6 +250,7 @@ export function FloorPlan(props: FloorPlanProps) {
           fac={f}
           selected={selected?.type === 'facility' && selected.id === f.id}
           delta={drag?.kind === 'facility' && drag.id === f.id ? dragDelta : { x: 0, y: 0 }}
+          diffMark={diffMarks ? markOf(f.id, diffMarks.addedFacilityIds, diffMarks.removedFacilityIds, diffMarks.changedFacilityIds) : undefined}
           onPointerDown={onFacilityPointerDown ?? (() => {})}
         />
       ))}

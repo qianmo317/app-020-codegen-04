@@ -355,6 +355,9 @@ export function FloorEditor({ floorId }: Props) {
           <button onClick={() => { setView((v) => ({ ...v, zoom: Math.min(3, v.zoom * 1.3) })) }}>放大</button>
           <button onClick={() => { setView((v) => ({ ...v, zoom: Math.max(0.008, v.zoom / 1.3) })) }}>缩小</button>
           <Link className="btn" to={`/floor/${floorId}/print`}>打印 / 出图</Link>
+          <Link className="btn" to={`/floor/${floorId}/history`}>
+            版本对照{floor.revisions?.length ? `（${floor.revisions.length} 版）` : ''}
+          </Link>
         </div>
         <svg
           ref={svgRef}

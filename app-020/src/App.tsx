@@ -4,16 +4,21 @@ import { BuildingPage } from './pages/Building';
 import { PrintPage } from './pages/Print';
 import { FacilitiesPage } from './pages/Facilities';
 import { RulesPage } from './pages/Rules';
+import { HistoryPage } from './pages/History';
+import { DiffPage } from './pages/DiffPage';
 import { Link, useRoute } from './router';
 
 export function App() {
   const { parts } = useRoute();
-  const [seg0, seg1, seg2] = parts;
+  const [seg0, seg1, seg2, seg3, seg4] = parts;
 
   let content: React.ReactNode;
   if (!seg0) content = <Home />;
   else if (seg0 === 'building' && seg1) content = <BuildingPage buildingId={seg1} />;
   else if (seg0 === 'floor' && seg1 && seg2 === 'print') content = <PrintPage floorId={seg1} />;
+  else if (seg0 === 'floor' && seg1 && seg2 === 'history') content = <HistoryPage floorId={seg1} />;
+  else if (seg0 === 'floor' && seg1 && seg2 === 'diff' && seg3 && seg4)
+    content = <DiffPage floorId={seg1} revisionAId={seg3} revisionBId={seg4} />;
   else if (seg0 === 'floor' && seg1) content = <FloorEditor floorId={seg1} />;
   else if (seg0 === 'facilities') content = <FacilitiesPage />;
   else if (seg0 === 'rules') content = <RulesPage />;

@@ -91,6 +91,7 @@ export function BuildingPage({ buildingId }: { buildingId: string }) {
                 </td>
                 <td>
                   <Link className="btn" to={`/floor/${f.id}`}>编辑</Link>{' '}
+                  <Link className="btn" to={`/floor/${f.id}/history`}>历史</Link>{' '}
                   <Link className="btn" to={`/floor/${f.id}/print`}>出图</Link>{' '}
                   <button
                     className="danger"

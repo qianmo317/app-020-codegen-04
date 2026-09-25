@@ -141,7 +141,7 @@ function roomWorstTravelM(room: Room, doors: Pt[], doorPathMm: number[], exitsIn
   return { worstM: worst / MM_PER_M, point: worstPt };
 }
 
-function estimateOccupants(room: Room): number {
+export function estimateOccupants(room: Room): number {
   if (room.occupants != null && room.occupants >= 0) return room.occupants;
   const density = OCCUPANCY_DENSITY_M2_PER_PERSON[room.usage] ?? 20;
   if (density <= 0) return 0;
@@ -393,6 +393,8 @@ export function validateFloor(floor: Floor, rules: RuleSet, now: number = Date.n
       maxTravelDistanceM: rules.maxTravelDistanceM,
       deadEndDistanceM: rules.deadEndDistanceM,
       extinguisherRadiusM: rules.extinguisherRadiusM,
+      exitMinAreaM2: rules.exitMinAreaM2,
+      exitMaxOccupants: rules.exitMaxOccupants,
     },
   };
 }

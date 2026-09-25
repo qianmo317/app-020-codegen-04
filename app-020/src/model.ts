@@ -42,6 +42,86 @@ export type Facility = {
   checks: CheckRecord[];
 };
 
+/**
+ * 楼层平面快照：版本历史的最小记录单位。
+ * 只包含平面本身与设施检查台账（回退恢复已删除设施时台账也能找回），
+ * 不含底图、标记——照片/底图只存本地 IndexedDB，不属于平面改动。
+ */
+export type PlanSnapshot = {
+  rooms: Room[];
+  facilities: Facility[];
+  exits: string[];
+};
+
+/** 对照时关心的四项汇总指标（面积含全部房间，走道长度按走道骨架估算） */
+export type FloorMetrics = {
+  areaM2: number; // 全部房间面积合计
+  roomCount: number; // 非走道房间数
+  exitCount: number; // 安全出口设施数
+  corridorLengthM: number; // 走道中心线总长（栅格骨架近似，m）
+};
+
+/** 变更条目：「改了什么」的人读描述，按类型区分 */
+export type PlanChangeKind =
+  | 'room_added'
+  | 'room_removed'
+  | 'room_moved'
+  | 'room_reshaped'
+  | 'room_renamed'
+  | 'room_reused'
+  | 'room_occupants'
+  | 'exit_added'
+  | 'exit_removed'
+  | 'exit_moved'
+  | 'facility_added'
+  | 'facility_removed'
+  | 'facility_moved';
+
+export type PlanChange = {
+  kind: PlanChangeKind;
+  /** 变更主体名称（房间名 / 设施编号），尽量取新版名称，删除时取旧版 */
+  label: string;
+  /** 主体 id（房间/设施），连续编辑合并时用它追踪同一主体，内部使用 */
+  subjectId?: string;
+  /** 数值变化（如人数 10→12、移动距离），可选 */
+  detail?: string;
+};
+
+/** 图元级差异：供对照页在两张图上分别高亮新增/删除/修改 */
+export type PlanDiff = {
+  addedRoomIds: string[];
+  removedRoomIds: string[];
+  changedRoomIds: string[]; // 同 id 但形状/位置/用途变化
+  addedFacilityIds: string[];
+  removedFacilityIds: string[];
+  changedFacilityIds: string[];
+  changes: PlanChange[];
+};
+
+export type RevisionKind = 'baseline' | 'edit' | 'rollback';
+
+/** 一版楼层平面 */
+export type FloorRevision = {
+  id: string;
+  seq: number; // 楼层内单调递增的版本号 v1/v2...
+  kind: RevisionKind;
+  createdAt: string;
+  /** 改动说明（baseline 为建版说明，rollback 注明回退来源） */
+  summary: string;
+  /** 明细变更条目；baseline 为空 */
+  changes: PlanChange[];
+  /** 回退来源版本号（kind === 'rollback' 时存在） */
+  rollbackFromSeq?: number;
+  /** 连续属性编辑（如名称输入）合并为同一版的键，内部使用 */
+  coalesceKey?: string;
+  snapshot: PlanSnapshot;
+  metrics: FloorMetrics;
+  /** 建版当时的完整规则集（限值可能改过，合规对照需要两版各自的限值） */
+  rules: RuleSet;
+  /** 建版当时的校验结果（自动校验完成后回填；无房间/设施时可能为空） */
+  validation: ValidationResult | null;
+};
+
 export type Underlay = {
   key: string; // IndexedDB key
   wPx: number;
@@ -64,6 +144,8 @@ export type Floor = {
   underlay?: Underlay;
   version: number; // 每次编辑 +1，用于触发校验
   lastValidation?: ValidationResult;
+  /** 版本历史（每次平面改动追加一版，永不删除；旧数据无此字段时首次编辑前补建） */
+  revisions?: FloorRevision[];
 };
 
 export type BuildingKind = 'office' | 'retail' | 'factory' | 'school';
@@ -116,6 +198,8 @@ export type ValidationResult = {
     maxTravelDistanceM: number;
     deadEndDistanceM: number;
     extinguisherRadiusM: number;
+    exitMinAreaM2: number;
+    exitMaxOccupants: number;
   };
 };
 
