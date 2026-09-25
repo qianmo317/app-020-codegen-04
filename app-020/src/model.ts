@@ -64,6 +64,61 @@ export type Floor = {
   underlay?: Underlay;
   version: number; // 每次编辑 +1，用于触发校验
   lastValidation?: ValidationResult;
+  /** 平面历史版本（每次几何改动追加一版），末条即当前平面 */
+  history?: FloorRevision[];
+  /** 当前平面对应的历史版本序号；lastValidation 只回写到该版本 */
+  historySeq?: number;
+};
+
+/** 一版平面快照（不含底图与检查照片，那两类资产存在 IndexedDB） */
+export type FloorSnapshot = {
+  rooms: Room[];
+  facilities: Facility[];
+  exits: string[];
+};
+
+/** 对照所需的平面指标 */
+export type FloorMetrics = {
+  areaM2: number; // 全部房间面积合计
+  roomCount: number;
+  exitCount: number;
+  corridorLengthM: number | null; // 走道中轴长度（栅格近似），无走道为 null
+};
+
+/** 单条图元改动（挪墙/加房间/换出口……） */
+export type PlanChange = {
+  kind:
+    | 'room_added'
+    | 'room_removed'
+    | 'room_moved'
+    | 'room_reshaped'
+    | 'room_renamed'
+    | 'room_reusage'
+    | 'room_occupants'
+    | 'facility_added'
+    | 'facility_removed'
+    | 'facility_moved'
+    | 'exit_added'
+    | 'exit_removed';
+  entityId: string;
+  name: string; // 取两版中较新的名称，便于读
+};
+
+export type FloorRevision = {
+  seq: number;
+  createdAt: string;
+  /** 本版相对上一版改了什么（首版为初始版本） */
+  summary: string;
+  changes: PlanChange[];
+  origin: 'edit' | 'rollback';
+  /** 回退来源版本号（origin === 'rollback' 时） */
+  rolledBackFrom?: number;
+  /** 回退后内容与哪个历史版本一致 */
+  restoredSeq?: number;
+  snapshot: FloorSnapshot;
+  metrics: FloorMetrics;
+  /** 本版当时的校验结果（规则可能改过，限值随结果一起冻结） */
+  validation: ValidationResult | null;
 };
 
 export type BuildingKind = 'office' | 'retail' | 'factory' | 'school';
@@ -116,6 +171,8 @@ export type ValidationResult = {
     maxTravelDistanceM: number;
     deadEndDistanceM: number;
     extinguisherRadiusM: number;
+    exitMinAreaM2: number;
+    exitMaxOccupants: number;
   };
 };
 

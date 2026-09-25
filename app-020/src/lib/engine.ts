@@ -393,6 +393,8 @@ export function validateFloor(floor: Floor, rules: RuleSet, now: number = Date.n
       maxTravelDistanceM: rules.maxTravelDistanceM,
       deadEndDistanceM: rules.deadEndDistanceM,
       extinguisherRadiusM: rules.extinguisherRadiusM,
+      exitMinAreaM2: rules.exitMinAreaM2,
+      exitMaxOccupants: rules.exitMaxOccupants,
     },
   };
 }

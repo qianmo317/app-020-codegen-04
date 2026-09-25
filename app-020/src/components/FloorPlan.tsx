@@ -22,33 +22,52 @@ export function mmFromEvent(svg: SVGSVGElement, view: View, e: { clientX: number
   };
 }
 
+const DIFF_COLORS = {
+  added: { stroke: '#2e7d32', fill: '#e5f3e6', tag: '新增' },
+  removed: { stroke: '#c62828', fill: '#fdecea', tag: '删除' },
+  changed: { stroke: '#e68a00', fill: '#fff6e0', tag: '改动' },
+} as const;
+
+export type DiffMarks = {
+  roomStatus: Map<string, keyof typeof DIFF_COLORS>;
+  facilityStatus: Map<string, keyof typeof DIFF_COLORS>;
+  /** 有差异标注时，未变图元淡化显示 */
+  active: boolean;
+};
+
 const RoomShape = memo(function RoomShape({
   room,
   selected,
   delta,
+  diffStatus,
+  dimmed,
   onPointerDown,
 }: {
   room: Room;
   selected: boolean;
   delta: Pt;
+  diffStatus?: keyof typeof DIFF_COLORS;
+  dimmed?: boolean;
   onPointerDown: (e: RPointerEvent<SVGGElement>, room: Room) => void;
 }) {
   const pts = room.polygon.map((p) => `${p.x + delta.x},${p.y + delta.y}`).join(' ');
   const cx = room.polygon.reduce((s, p) => s + p.x, 0) / room.polygon.length + delta.x;
   const cy = room.polygon.reduce((s, p) => s + p.y, 0) / room.polygon.length + delta.y;
+  const dc = diffStatus ? DIFF_COLORS[diffStatus] : null;
   return (
     <g
       onPointerDown={(e) => {
         e.stopPropagation();
         onPointerDown(e, room);
       }}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: 'pointer', opacity: dimmed ? 0.35 : 1 }}
     >
       <polygon
         points={pts}
-        fill={USAGE_FILLS[room.usage]}
-        stroke={selected ? '#1976d2' : '#333333'}
-        strokeWidth={room.usage === 'corridor' ? 3 : 2.5}
+        fill={dc ? dc.fill : USAGE_FILLS[room.usage]}
+        stroke={dc ? dc.stroke : selected ? '#1976d2' : '#333333'}
+        strokeWidth={dc ? 5 : room.usage === 'corridor' ? 3 : 2.5}
+        strokeDasharray={diffStatus === 'removed' ? '12 6' : undefined}
         vectorEffect="non-scaling-stroke"
       />
       <text
@@ -64,6 +83,18 @@ const RoomShape = memo(function RoomShape({
           {room.areaM2.toFixed(1)}㎡
         </tspan>
       </text>
+      {dc && (
+        <text
+          x={room.polygon[0].x + delta.x + 300}
+          y={room.polygon[0].y + delta.y - 250}
+          fontSize={380}
+          fontWeight="bold"
+          fill={dc.stroke}
+          style={{ userSelect: 'none', pointerEvents: 'none' }}
+        >
+          {dc.tag}
+        </text>
+      )}
     </g>
   );
 });
@@ -72,15 +103,20 @@ const FacilityShape = memo(function FacilityShape({
   fac,
   selected,
   delta,
+  diffStatus,
+  dimmed,
   onPointerDown,
 }: {
   fac: Facility;
   selected: boolean;
   delta: Pt;
+  diffStatus?: keyof typeof DIFF_COLORS;
+  dimmed?: boolean;
   onPointerDown: (e: RPointerEvent<SVGGElement>, fac: Facility) => void;
 }) {
   const x = fac.x + delta.x;
   const y = fac.y + delta.y;
+  const dc = diffStatus ? DIFF_COLORS[diffStatus] : null;
   return (
     <g
       transform={`translate(${x},${y})`}
@@ -88,12 +124,18 @@ const FacilityShape = memo(function FacilityShape({
         e.stopPropagation();
         onPointerDown(e, fac);
       }}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: 'pointer', opacity: dimmed ? 0.35 : 1 }}
     >
-      {selected && <circle r={900} fill="none" stroke="#1976d2" strokeWidth={2} vectorEffect="non-scaling-stroke" />}
+      {dc && <circle r={fac.kind === 'exit' ? 1400 : 1000} fill={dc.fill} stroke={dc.stroke} strokeWidth={4} strokeDasharray={diffStatus === 'removed' ? '10 6' : undefined} vectorEffect="non-scaling-stroke" />}
+      {selected && !dc && <circle r={900} fill="none" stroke="#1976d2" strokeWidth={2} vectorEffect="non-scaling-stroke" />}
       <FacilityGlyph kind={fac.kind} s={fac.kind === 'exit' ? 700 : 550} />
-      <text y={1150} textAnchor="middle" fontSize={330} fill="#555" style={{ userSelect: 'none', pointerEvents: 'none' }}>
+      <text y={1150} textAnchor="middle" fontSize={330} fill={dc ? dc.stroke : '#555'} fontWeight={dc ? 'bold' : undefined} style={{ userSelect: 'none', pointerEvents: 'none' }}>
         {fac.code}
+        {dc && (
+          <tspan x={0} dy={380} fontSize={300}>
+            {dc.tag}
+          </tspan>
+        )}
       </text>
     </g>
   );
@@ -113,17 +155,19 @@ export type FloorPlanProps = {
   coverageCells: Pt[] | null;
   highlight: Pt | null;
   markPt: Pt | null;
+  /** 版本对照模式：图元差异标注（新增/删除/改动），不传则为普通编辑/打印渲染 */
+  diffMarks?: DiffMarks | null;
   onRoomPointerDown?: (e: RPointerEvent<SVGGElement>, room: Room) => void;
   onFacilityPointerDown?: (e: RPointerEvent<SVGGElement>, fac: Facility) => void;
   onMarkPointerDown?: (e: RPointerEvent<SVGGElement>) => void;
 };
 
-/** 图纸渲染（编辑器 / 打印共用）：毫米坐标，1 单位 = 1mm */
+/** 图纸渲染（编辑器 / 打印 / 版本对照共用）：毫米坐标，1 单位 = 1mm */
 export function FloorPlan(props: FloorPlanProps) {
   const {
     floor, view, svgRef, underlayUrl, showGrid = true,
     selected, drag, dragDelta, draftPoints, draftCursor,
-    coverageCells, highlight, markPt,
+    coverageCells, highlight, markPt, diffMarks,
     onRoomPointerDown, onFacilityPointerDown, onMarkPointerDown,
   } = props;
   void svgRef;
@@ -161,6 +205,8 @@ export function FloorPlan(props: FloorPlanProps) {
           room={r}
           selected={selected?.type === 'room' && selected.id === r.id}
           delta={drag?.kind === 'room' && drag.id === r.id ? dragDelta : { x: 0, y: 0 }}
+          diffStatus={diffMarks?.roomStatus.get(r.id)}
+          dimmed={diffMarks?.active && !diffMarks.roomStatus.has(r.id)}
           onPointerDown={onRoomPointerDown ?? (() => {})}
         />
       ))}
@@ -177,6 +223,8 @@ export function FloorPlan(props: FloorPlanProps) {
           fac={f}
           selected={selected?.type === 'facility' && selected.id === f.id}
           delta={drag?.kind === 'facility' && drag.id === f.id ? dragDelta : { x: 0, y: 0 }}
+          diffStatus={diffMarks?.facilityStatus.get(f.id)}
+          dimmed={diffMarks?.active && !diffMarks.facilityStatus.has(f.id)}
           onPointerDown={onFacilityPointerDown ?? (() => {})}
         />
       ))}
